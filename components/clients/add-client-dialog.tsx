@@ -29,21 +29,26 @@ export function AddClientDialog() {
     const form = e.currentTarget
     const data = new FormData(form)
 
-    const fullName = data.get('full_name') as string
-    const debtAmount = parseFloat(data.get('debt_amount') as string)
+    const full_name = data.get('full_name') as string
+    const monthly_amount = parseFloat(data.get('monthly_amount') as string)
+    const payment_day = parseInt(data.get('payment_day') as string)
     const notes = data.get('notes') as string
 
-    if (!fullName.trim() || isNaN(debtAmount) || debtAmount <= 0) {
+    if (!full_name.trim() || isNaN(monthly_amount) || monthly_amount <= 0) {
       toast.error('Completa todos los campos correctamente')
+      return
+    }
+    if (payment_day < 1 || payment_day > 28) {
+      toast.error('El día de pago debe estar entre 1 y 28')
       return
     }
 
     startTransition(async () => {
-      const result = await createClient_({ full_name: fullName, debt_amount: debtAmount, notes })
+      const result = await createClient_({ full_name, monthly_amount, payment_day, notes })
       if (result.error) {
         toast.error(result.error)
       } else {
-        toast.success(`Cliente "${fullName}" agregado exitosamente`)
+        toast.success(`Cliente "${full_name}" agregado`)
         setOpen(false)
         form.reset()
       }
@@ -52,10 +57,7 @@ export function AddClientDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      {/* Sin asChild: DialogTrigger renderiza su propio elemento, no anida buttons */}
-      <DialogTrigger
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-400 text-black text-sm font-medium transition-colors"
-      >
+      <DialogTrigger className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-400 text-black text-sm font-medium transition-colors">
         <Plus className="w-4 h-4" />
         Nuevo cliente
       </DialogTrigger>
@@ -68,7 +70,7 @@ export function AddClientDialog() {
             <DialogTitle className="text-xl">Agregar cliente</DialogTitle>
           </div>
           <DialogDescription className="text-muted-foreground text-sm">
-            Registra un nuevo cliente con su deuda pendiente.
+            Se generará un pago pendiente cada mes en el día indicado.
           </DialogDescription>
         </DialogHeader>
 
@@ -86,33 +88,52 @@ export function AddClientDialog() {
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="debt_amount" className="text-xs uppercase tracking-widest text-muted-foreground">
-              Monto de la deuda
-            </Label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="monthly_amount" className="text-xs uppercase tracking-widest text-muted-foreground">
+                Monto mensual
+              </Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                <Input
+                  id="monthly_amount"
+                  name="monthly_amount"
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  placeholder="0"
+                  required
+                  className="pl-7 bg-secondary border-border focus:border-amber-500/50"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="payment_day" className="text-xs uppercase tracking-widest text-muted-foreground">
+                Día de pago
+              </Label>
               <Input
-                id="debt_amount"
-                name="debt_amount"
+                id="payment_day"
+                name="payment_day"
                 type="number"
-                min="0"
-                step="0.01"
-                placeholder="0"
+                min="1"
+                max="28"
+                placeholder="15"
                 required
-                className="pl-7 bg-secondary border-border focus:border-amber-500/50"
+                className="bg-secondary border-border focus:border-amber-500/50"
               />
+              <p className="text-[10px] text-muted-foreground">Día del mes (1–28)</p>
             </div>
           </div>
 
           <div className="space-y-1.5">
             <Label htmlFor="notes" className="text-xs uppercase tracking-widest text-muted-foreground">
-              Notas <span className="text-muted-foreground/50 normal-case tracking-normal">(opcional)</span>
+              Notas <span className="normal-case tracking-normal text-muted-foreground/50">(opcional)</span>
             </Label>
             <Input
               id="notes"
               name="notes"
-              placeholder="Observaciones adicionales..."
+              placeholder="Observaciones..."
               className="bg-secondary border-border focus:border-amber-500/50"
             />
           </div>
@@ -132,14 +153,7 @@ export function AddClientDialog() {
               disabled={isPending}
               className="flex-1 bg-amber-500 hover:bg-amber-400 text-black"
             >
-              {isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Guardando...
-                </>
-              ) : (
-                'Agregar cliente'
-              )}
+              {isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Guardando...</> : 'Agregar cliente'}
             </Button>
           </div>
         </form>

@@ -4,16 +4,10 @@
 
 import { getClients, getDebtors } from '@/lib/actions/clients.actions'
 import { getCurrentProfile } from '@/lib/actions/auth.actions'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Users,
-  AlertTriangle,
-  CheckCircle2,
-  TrendingUp,
-  Clock,
-} from 'lucide-react'
+import { Users, AlertTriangle, CheckCircle2, TrendingUp, Clock, CalendarDays } from 'lucide-react'
 import Link from 'next/link'
 
 export default async function DashboardPage() {
@@ -27,19 +21,16 @@ export default async function DashboardPage() {
   const debtors = debtorsResult.data ?? []
 
   const totalClients = clients.length
-  const totalDebtors = debtors.length
-  const totalPaid = clients.filter((c) => c.is_paid).length
-  const totalDebt = debtors.reduce((sum, c) => sum + c.debt_amount, 0)
-  const totalRecovered = clients
-    .filter((c) => c.is_paid)
-    .reduce((sum, c) => sum + c.debt_amount, 0)
+  const totalDebtPayments = debtors.length
+  const clientsWithDebt = new Set(debtors.map((d) => d.client_id)).size
+  const totalDebt = debtors.reduce((sum, p) => sum + p.amount, 0)
+  const clientsUpToDate = clients.filter((c) => c.overdue_payments === 0 && c.pending_payments === 0).length
 
-  // Últimos 5 morosos más antiguos
-  const oldestDebtors = debtors.slice(0, 5)
+  // Top 5 morosos más antiguos
+  const worstDebtors = debtors.slice(0, 5)
 
   return (
     <div className="space-y-8">
-      {/* Header */}
       <div className="animate-fade-up">
         <p className="text-xs uppercase tracking-widest text-amber-400/70 mb-1">Panel principal</p>
         <h1 className="text-4xl text-foreground">
@@ -50,7 +41,7 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      {/* Stats cards */}
+      {/* Stats */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         {[
           {
@@ -62,8 +53,8 @@ export default async function DashboardPage() {
             delay: 'animate-fade-up-delay-1',
           },
           {
-            label: 'Morosos',
-            value: totalDebtors,
+            label: 'Clientes en mora',
+            value: clientsWithDebt,
             icon: AlertTriangle,
             color: 'text-red-400',
             bg: 'bg-red-500/10 border-red-500/20',
@@ -71,14 +62,14 @@ export default async function DashboardPage() {
           },
           {
             label: 'Al día',
-            value: totalPaid,
+            value: clientsUpToDate,
             icon: CheckCircle2,
             color: 'text-emerald-400',
             bg: 'bg-emerald-500/10 border-emerald-500/20',
             delay: 'animate-fade-up-delay-3',
           },
           {
-            label: 'Deuda pendiente',
+            label: 'Deuda en mora',
             value: formatCurrency(totalDebt),
             icon: TrendingUp,
             color: 'text-amber-400',
@@ -90,12 +81,8 @@ export default async function DashboardPage() {
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
-                    {stat.label}
-                  </p>
-                  <p className={`text-2xl font-mono font-medium ${stat.color}`}>
-                    {stat.value}
-                  </p>
+                  <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">{stat.label}</p>
+                  <p className={`text-2xl font-mono font-medium ${stat.color}`}>{stat.value}</p>
                 </div>
                 <div className={`p-2 rounded-md ${stat.bg}`}>
                   <stat.icon className={`w-4 h-4 ${stat.color}`} />
@@ -106,15 +93,14 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      {/* Fila inferior */}
+      {/* Pagos en mora + Próximos pagos */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        {/* Morosos recientes */}
         <Card className="border-border bg-card animate-fade-up-delay-3 animate-fade-up">
           <CardHeader className="border-b border-border pb-4">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2 font-mono font-normal">
                 <AlertTriangle className="w-4 h-4 text-red-400" />
-                Morosos más antiguos
+                Pagos en mora
               </CardTitle>
               <Link href="/dashboard/morosos">
                 <Badge variant="outline" className="text-xs border-border hover:border-amber-500/30 hover:text-amber-400 transition-colors cursor-pointer">
@@ -124,75 +110,86 @@ export default async function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            {oldestDebtors.length === 0 ? (
+            {worstDebtors.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <CheckCircle2 className="w-8 h-8 mb-3 text-emerald-500/40" />
-                <p className="text-sm">No hay morosos</p>
+                <p className="text-sm">Sin pagos en mora</p>
               </div>
             ) : (
               <div className="divide-y divide-border">
-                {oldestDebtors.map((client) => (
-                  <div key={client.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-secondary/50 transition-colors">
+                {worstDebtors.map((payment) => (
+                  <Link
+                    key={payment.id}
+                    href={`/dashboard/clientes/${payment.client_id}`}
+                    className="flex items-center justify-between px-5 py-3.5 hover:bg-red-500/5 transition-colors"
+                  >
                     <div className="min-w-0">
-                      <p className="text-sm text-foreground truncate">{client.full_name}</p>
+                      <p className="text-sm text-foreground truncate">{payment.client_name}</p>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <Clock className="w-3 h-3 text-muted-foreground" />
-                        <p className="text-xs text-muted-foreground">
-                          Desde {formatDate(client.debt_date)}
+                        <Clock className="w-3 h-3 text-red-400/60" />
+                        <p className="text-xs text-red-400/70">
+                          {payment.days_overdue} día{payment.days_overdue !== 1 ? 's' : ''} en mora
                         </p>
                       </div>
                     </div>
                     <p className="text-sm font-mono text-red-400 shrink-0 ml-4">
-                      {formatCurrency(client.debt_amount)}
+                      {formatCurrency(payment.amount)}
                     </p>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Resumen de recuperación */}
+        {/* Clientes con pago próximo (en los próximos 5 días) */}
         <Card className="border-border bg-card animate-fade-up-delay-4 animate-fade-up">
           <CardHeader className="border-b border-border pb-4">
             <CardTitle className="text-base flex items-center gap-2 font-mono font-normal">
-              <TrendingUp className="w-4 h-4 text-amber-400" />
-              Resumen financiero
+              <CalendarDays className="w-4 h-4 text-amber-400" />
+              Próximos vencimientos
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-5 space-y-4">
-            <div className="flex justify-between items-center py-3 border-b border-border">
-              <span className="text-sm text-muted-foreground">Total deuda pendiente</span>
-              <span className="font-mono text-red-400">{formatCurrency(totalDebt)}</span>
-            </div>
-            <div className="flex justify-between items-center py-3 border-b border-border">
-              <span className="text-sm text-muted-foreground">Total recuperado</span>
-              <span className="font-mono text-emerald-400">{formatCurrency(totalRecovered)}</span>
-            </div>
-            <div className="flex justify-between items-center py-3">
-              <span className="text-sm text-muted-foreground">Total gestionado</span>
-              <span className="font-mono text-amber-400">{formatCurrency(totalDebt + totalRecovered)}</span>
-            </div>
+          <CardContent className="p-0">
+            {(() => {
+              const today = new Date()
+              const in5days = new Date()
+              in5days.setDate(in5days.getDate() + 5)
+              const todayDay = today.getDate()
+              const upcoming = clients.filter((c) => {
+                const d = c.payment_day
+                return d >= todayDay && d <= todayDay + 5 && c.pending_payments === 0 && c.prepaid_months === 0
+              }).slice(0, 5)
 
-            {/* Barra de progreso */}
-            {totalDebt + totalRecovered > 0 && (
-              <div className="pt-2">
-                <div className="flex justify-between text-xs text-muted-foreground mb-2">
-                  <span>Tasa de recuperación</span>
-                  <span className="text-emerald-400">
-                    {Math.round((totalRecovered / (totalDebt + totalRecovered)) * 100)}%
-                  </span>
+              if (upcoming.length === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                    <CalendarDays className="w-8 h-8 mb-3 text-amber-500/30" />
+                    <p className="text-sm">Sin vencimientos próximos</p>
+                  </div>
+                )
+              }
+
+              return (
+                <div className="divide-y divide-border">
+                  {upcoming.map((client) => (
+                    <Link
+                      key={client.id}
+                      href={`/dashboard/clientes/${client.id}`}
+                      className="flex items-center justify-between px-5 py-3.5 hover:bg-amber-500/5 transition-colors"
+                    >
+                      <div>
+                        <p className="text-sm text-foreground">{client.full_name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Vence el día {client.payment_day}</p>
+                      </div>
+                      <p className="text-sm font-mono text-amber-400">
+                        {formatCurrency(client.monthly_amount)}
+                      </p>
+                    </Link>
+                  ))}
                 </div>
-                <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-500 rounded-full transition-all"
-                    style={{
-                      width: `${Math.round((totalRecovered / (totalDebt + totalRecovered)) * 100)}%`
-                    }}
-                  />
-                </div>
-              </div>
-            )}
+              )
+            })()}
           </CardContent>
         </Card>
       </div>
