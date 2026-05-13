@@ -17,36 +17,28 @@ import type {
 
 // ─── HELPERS ──────────────────────────────────────────────
 
-// Calcula todas las due_dates que deberían existir para un cliente hasta hoy
 function getDueDatesUpToToday(client: Client): Date[] {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-
   const dates: Date[] = []
   const start = new Date(client.start_date)
 
-  // Primera due_date: el payment_day del mes de start_date
-  // Si el payment_day ya pasó en ese mes, empieza el mes siguiente
   let current = new Date(start.getFullYear(), start.getMonth(), client.payment_day)
   if (current < start) {
     current = new Date(start.getFullYear(), start.getMonth() + 1, client.payment_day)
   }
 
-  // Generar fechas mes a mes hasta hoy
   while (current <= today) {
     dates.push(new Date(current))
     current = new Date(current.getFullYear(), current.getMonth() + 1, client.payment_day)
   }
-
   return dates
 }
 
-// Calcula el status de un payment
 function computePaymentStatus(payment: Payment): PaymentWithStatus {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  const due = new Date(payment.due_date)
-  const gracePeriodEnd = new Date(due)
+  const gracePeriodEnd = new Date(payment.due_date)
   gracePeriodEnd.setDate(gracePeriodEnd.getDate() + 3)
 
   const isOverdue = !payment.is_paid && today > gracePeriodEnd
@@ -65,11 +57,9 @@ function computePaymentStatus(payment: Payment): PaymentWithStatus {
 }
 
 // ─── GENERAR PAGOS FALTANTES ──────────────────────────────
-// Llama esto al cargar la app para crear los payment rows que faltan
 export async function generatePendingPayments(clientId: string): Promise<void> {
   const supabase = await createClient()
 
-  // Obtener cliente
   const { data: client } = await supabase
     .from('clients')
     .select('*')
@@ -78,46 +68,30 @@ export async function generatePendingPayments(clientId: string): Promise<void> {
 
   if (!client) return
 
-  // Obtener payments ya existentes
   const { data: existing } = await supabase
     .from('payments')
     .select('due_date')
     .eq('client_id', clientId)
 
   const existingDates = new Set((existing ?? []).map((p) => p.due_date))
-
-  // Calcular cuáles due_dates faltan
   const dueDates = getDueDatesUpToToday(client as Client)
-  const missing = dueDates.filter((d) => {
-    const dateStr = d.toISOString().split('T')[0]
-    return !existingDates.has(dateStr)
-  })
+  const missing = dueDates.filter((d) => !existingDates.has(d.toISOString().split('T')[0]))
 
   if (missing.length === 0) return
 
-  // Aplicar meses prepagados: si hay prepaid_months, no crear esos payments
-  // sino consumirlos y decrementar prepaid_months
   let prepaidRemaining = client.prepaid_months
   const toInsert: { client_id: string; due_date: string; amount: number }[] = []
   let prepaidConsumed = 0
 
   for (const date of missing) {
-    const dateStr = date.toISOString().split('T')[0]
+    toInsert.push({
+      client_id: clientId,
+      due_date: date.toISOString().split('T')[0],
+      amount: client.monthly_amount,
+    })
     if (prepaidRemaining > 0) {
-      // Este mes está cubierto por prepago → insertarlo como pagado automáticamente
-      toInsert.push({
-        client_id: clientId,
-        due_date: dateStr,
-        amount: client.monthly_amount,
-      })
       prepaidRemaining--
       prepaidConsumed++
-    } else {
-      toInsert.push({
-        client_id: clientId,
-        due_date: dateStr,
-        amount: client.monthly_amount,
-      })
     }
   }
 
@@ -125,7 +99,6 @@ export async function generatePendingPayments(clientId: string): Promise<void> {
     await supabase.from('payments').upsert(toInsert, { onConflict: 'client_id,due_date' })
   }
 
-  // Decrementar prepaid_months en el cliente
   if (prepaidConsumed > 0) {
     await supabase
       .from('clients')
@@ -140,11 +113,7 @@ export async function getClients(): Promise<ActionResult<ClientWithStats[]>> {
 
   const { data: clients, error } = await supabase
     .from('clients')
-    .select(`
-      *,
-      profiles:created_by ( full_name, email ),
-      payments ( id, is_paid, due_date, amount )
-    `)
+    .select(`*, profiles:created_by ( full_name, email ), payments ( id, is_paid, due_date, amount )`)
     .order('created_at', { ascending: false })
 
   if (error) return { data: null, error: error.message }
@@ -160,7 +129,6 @@ export async function getClients(): Promise<ActionResult<ClientWithStats[]>> {
       grace.setDate(grace.getDate() + 3)
       return today > grace
     })
-    const totalDebt = pendingPayments.reduce((sum, p) => sum + p.amount, 0)
 
     return {
       id: c.id,
@@ -177,7 +145,7 @@ export async function getClients(): Promise<ActionResult<ClientWithStats[]>> {
       created_by_email: c.profiles?.email ?? null,
       pending_payments: pendingPayments.length,
       overdue_payments: overduePayments.length,
-      total_debt: totalDebt,
+      total_debt: pendingPayments.reduce((sum, p) => sum + p.amount, 0),
     }
   })
 
@@ -185,20 +153,14 @@ export async function getClients(): Promise<ActionResult<ClientWithStats[]>> {
 }
 
 // ─── OBTENER PAGOS DE UN CLIENTE ──────────────────────────
-export async function getClientPayments(
-  clientId: string
-): Promise<ActionResult<PaymentWithStatus[]>> {
-  // Primero generar los que falten
+export async function getClientPayments(clientId: string): Promise<ActionResult<PaymentWithStatus[]>> {
   await generatePendingPayments(clientId)
 
   const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('payments')
-    .select(`
-      *,
-      profiles:paid_by ( full_name, email )
-    `)
+    .select(`*, profiles:paid_by ( full_name, email )`)
     .eq('client_id', clientId)
     .order('due_date', { ascending: false })
 
@@ -214,11 +176,10 @@ export async function getClientPayments(
   return { data: result, error: null }
 }
 
-// ─── OBTENER TODOS LOS MOROSOS ────────────────────────────
+// ─── OBTENER MOROSOS ──────────────────────────────────────
 export async function getDebtors(): Promise<ActionResult<PaymentWithStatus[]>> {
   const supabase = await createClient()
 
-  // Generar pendientes para todos los clientes
   const { data: allClients } = await supabase.from('clients').select('id')
   await Promise.all((allClients ?? []).map((c) => generatePendingPayments(c.id)))
 
@@ -230,13 +191,9 @@ export async function getDebtors(): Promise<ActionResult<PaymentWithStatus[]>> {
 
   const { data, error } = await supabase
     .from('payments')
-    .select(`
-      *,
-      profiles:paid_by ( full_name, email ),
-      clients!inner ( full_name )
-    `)
+    .select(`*, profiles:paid_by ( full_name, email ), clients!inner ( full_name )`)
     .eq('is_paid', false)
-    .lte('due_date', graceCutoffStr)   // due_date <= hoy - 3 días → en mora
+    .lte('due_date', graceCutoffStr)
     .order('due_date', { ascending: true })
 
   if (error) return { data: null, error: error.message }
@@ -263,7 +220,7 @@ export async function createClient_(formData: ClientFormData): Promise<ActionRes
       full_name: formData.full_name.trim(),
       monthly_amount: formData.monthly_amount,
       payment_day: formData.payment_day,
-      start_date: new Date().toISOString().split('T')[0], // hoy
+      start_date: new Date().toISOString().split('T')[0],
       prepaid_months: 0,
       notes: formData.notes?.trim() || null,
       created_by: user.id,
@@ -273,7 +230,6 @@ export async function createClient_(formData: ClientFormData): Promise<ActionRes
 
   if (error) return { data: null, error: error.message }
 
-  // Generar el primer pago pendiente si ya tocó
   await generatePendingPayments(data.id)
 
   revalidatePath('/dashboard')
@@ -290,11 +246,7 @@ export async function markPaymentPaid(paymentId: string): Promise<ActionResult<P
 
   const { data, error } = await supabase
     .from('payments')
-    .update({
-      is_paid: true,
-      paid_at: new Date().toISOString(),
-      paid_by: user.id,
-    })
+    .update({ is_paid: true, paid_at: new Date().toISOString(), paid_by: user.id })
     .eq('id', paymentId)
     .select()
     .single()
@@ -307,18 +259,14 @@ export async function markPaymentPaid(paymentId: string): Promise<ActionResult<P
   return { data: data as Payment, error: null }
 }
 
-// ─── REGISTRAR MESES PREPAGADOS ───────────────────────────
-export async function addPrepaidMonths(
-  clientId: string,
-  months: number
-): Promise<ActionResult> {
+// ─── MESES PREPAGADOS ─────────────────────────────────────
+export async function addPrepaidMonths(clientId: string, months: number): Promise<ActionResult> {
   if (months < 1) return { data: null, error: 'Debe ser al menos 1 mes' }
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { data: null, error: 'No autenticado' }
 
-  // Obtener prepaid_months actual
   const { data: client, error: fetchError } = await supabase
     .from('clients')
     .select('prepaid_months')
@@ -338,12 +286,42 @@ export async function addPrepaidMonths(
   return { data: null, error: null }
 }
 
+// ─── ACTUALIZAR CLIENTE ───────────────────────────────────
+export async function updateClient(
+  clientId: string,
+  formData: {
+    full_name?: string
+    monthly_amount?: number
+    payment_day?: number
+    notes?: string
+  }
+): Promise<ActionResult<Client>> {
+  const supabase = await createClient()
+
+  const updates: Record<string, unknown> = {}
+  if (formData.full_name !== undefined) updates.full_name = formData.full_name.trim()
+  if (formData.monthly_amount !== undefined) updates.monthly_amount = formData.monthly_amount
+  if (formData.payment_day !== undefined) updates.payment_day = formData.payment_day
+  if (formData.notes !== undefined) updates.notes = formData.notes.trim() || null
+
+  const { data, error } = await supabase
+    .from('clients')
+    .update(updates)
+    .eq('id', clientId)
+    .select()
+    .single()
+
+  if (error) return { data: null, error: error.message }
+
+  revalidatePath('/dashboard/clientes')
+  revalidatePath(`/dashboard/clientes/${clientId}`)
+  return { data: data as Client, error: null }
+}
+
 // ─── ELIMINAR CLIENTE (solo admin) ────────────────────────
 export async function deleteClient(clientId: string): Promise<ActionResult> {
   const supabase = await createClient()
-
   const { error } = await supabase.from('clients').delete().eq('id', clientId)
-
   if (error) return { data: null, error: error.message }
 
   revalidatePath('/dashboard')
@@ -352,10 +330,10 @@ export async function deleteClient(clientId: string): Promise<ActionResult> {
   return { data: null, error: null }
 }
 
-// ─── BUSCAR CLIENTES POR NOMBRE ───────────────────────────
+// ─── BUSCAR CLIENTES ──────────────────────────────────────
 export async function searchClients(query: string): Promise<ActionResult<ClientWithStats[]>> {
   const { data, error } = await getClients()
-  if (error || !data) return { data: null, error: error }
+  if (error || !data) return { data: null, error }
   const q = query.toLowerCase()
   return { data: data.filter((c) => c.full_name.toLowerCase().includes(q)), error: null }
 }

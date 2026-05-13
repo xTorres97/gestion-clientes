@@ -1,5 +1,6 @@
 // ============================================================
 // Archivo: src/components/clients/clients-table.tsx
+// Mobile: cards | Desktop: tabla — con opción de editar
 // ============================================================
 
 'use client'
@@ -7,35 +8,22 @@
 import { useState, useTransition, useMemo } from 'react'
 import { deleteClient } from '@/lib/actions/clients.actions'
 import type { ClientWithStats } from '@/types'
-import { formatCurrency, formatDate, cn } from '@/lib/utils'
+import { formatCurrency, cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { PrepaidDialog } from './prepaid-dialog'
+import { EditClientDialog } from './edit-client-dialog'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
-  Search,
-  CheckCircle2,
-  AlertTriangle,
-  MoreHorizontal,
-  Trash2,
-  CalendarCheck,
-  CalendarDays,
-  Eye,
+  Search, CheckCircle2, AlertTriangle, MoreHorizontal,
+  Trash2, CalendarCheck, CalendarDays, Eye, Pencil,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -48,6 +36,7 @@ export function ClientsTable({ clients, isAdmin }: ClientsTableProps) {
   const [search, setSearch] = useState('')
   const [isPending, startTransition] = useTransition()
   const [prepaidClient, setPrepaidClient] = useState<ClientWithStats | null>(null)
+  const [editClient, setEditClient] = useState<ClientWithStats | null>(null)
 
   const filtered = useMemo(() => {
     if (!search.trim()) return clients
@@ -64,28 +53,174 @@ export function ClientsTable({ clients, isAdmin }: ClientsTableProps) {
     })
   }
 
+  // Badge de estado reutilizable
+  const StatusBadge = ({ client }: { client: ClientWithStats }) => {
+    if (client.overdue_payments > 0)
+      return (
+        <Badge variant="outline" className="text-xs gap-1 border-red-500/30 text-red-400 bg-red-500/10">
+          <AlertTriangle className="w-3 h-3" />{client.overdue_payments} mora
+        </Badge>
+      )
+    if (client.pending_payments > 0)
+      return (
+        <Badge variant="outline" className="text-xs border-amber-500/30 text-amber-400 bg-amber-500/10">
+          {client.pending_payments} pend.
+        </Badge>
+      )
+    return (
+      <Badge variant="outline" className="text-xs gap-1 border-emerald-500/30 text-emerald-400 bg-emerald-500/10">
+        <CheckCircle2 className="w-3 h-3" />Al día
+      </Badge>
+    )
+  }
+
+  // Menú de acciones reutilizable
+  const ActionsMenu = ({ client }: { client: ClientWithStats }) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        disabled={isPending}
+        className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
+      >
+        <MoreHorizontal className="w-4 h-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="bg-card border-border">
+        <DropdownMenuItem>
+          <Link
+            href={`/dashboard/clientes/${client.id}`}
+            className="text-sm gap-2 cursor-pointer flex items-center"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            Ver pagos
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => setEditClient(client)}
+          className="text-sm gap-2 cursor-pointer"
+        >
+          <Pencil className="w-3.5 h-3.5" />
+          Editar datos
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => setPrepaidClient(client)}
+          className="text-sm gap-2 cursor-pointer text-emerald-400 focus:text-emerald-400 focus:bg-emerald-500/10"
+        >
+          <CalendarCheck className="w-3.5 h-3.5" />
+          Pago múltiple
+        </DropdownMenuItem>
+        {isAdmin && (
+          <>
+            <DropdownMenuSeparator className="bg-border" />
+            <DropdownMenuItem
+              onClick={() => handleDelete(client)}
+              className="text-sm gap-2 text-destructive cursor-pointer focus:text-destructive focus:bg-destructive/10"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Eliminar
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+
   return (
     <>
       <div className="space-y-4">
+        {/* Buscador */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Buscar por nombre..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 bg-card border-border max-w-sm"
+            className="pl-9 bg-card border-border w-full md:max-w-sm"
           />
         </div>
 
-        <div className="rounded-md border border-border overflow-hidden">
+        {/* ── MOBILE: Cards ── */}
+        <div className="md:hidden space-y-3">
+          {filtered.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground text-sm">
+              {search ? 'Sin resultados' : 'No hay clientes registrados'}
+            </div>
+          ) : (
+            filtered.map((client) => (
+              <div
+                key={client.id}
+                className={cn(
+                  'rounded-lg border bg-card p-4',
+                  client.overdue_payments > 0 ? 'border-red-500/20' : 'border-border'
+                )}
+              >
+                {/* Cabecera de la card */}
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{client.full_name}</p>
+                    {client.notes && (
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{client.notes}</p>
+                    )}
+                  </div>
+                  <ActionsMenu client={client} />
+                </div>
+
+                {/* Grid de datos */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-secondary/50 rounded-md px-3 py-2">
+                    <p className="text-muted-foreground mb-0.5">Mensual</p>
+                    <p className="font-mono text-amber-400 font-medium">{formatCurrency(client.monthly_amount)}</p>
+                  </div>
+                  <div className="bg-secondary/50 rounded-md px-3 py-2">
+                    <p className="text-muted-foreground mb-0.5">Día pago</p>
+                    <p className="font-mono text-foreground flex items-center gap-1">
+                      <CalendarDays className="w-3 h-3" />Día {client.payment_day}
+                    </p>
+                  </div>
+                  <div className="bg-secondary/50 rounded-md px-3 py-2">
+                    <p className="text-muted-foreground mb-1">Estado</p>
+                    <StatusBadge client={client} />
+                  </div>
+                  <div className="bg-secondary/50 rounded-md px-3 py-2">
+                    <p className="text-muted-foreground mb-0.5">Deuda</p>
+                    <p className={cn(
+                      'font-mono text-sm font-medium',
+                      client.total_debt > 0 ? 'text-red-400' : 'text-muted-foreground'
+                    )}>
+                      {client.total_debt > 0 ? formatCurrency(client.total_debt) : '—'}
+                    </p>
+                  </div>
+                </div>
+
+                {client.prepaid_months > 0 && (
+                  <div className="mt-2">
+                    <Badge variant="outline" className="text-xs border-emerald-500/30 text-emerald-400">
+                      +{client.prepaid_months} mes{client.prepaid_months > 1 ? 'es' : ''} prepagado{client.prepaid_months > 1 ? 's' : ''}
+                    </Badge>
+                  </div>
+                )}
+
+                {/* Acceso rápido a pagos */}
+                <Link
+                  href={`/dashboard/clientes/${client.id}`}
+                  className="mt-3 pt-3 border-t border-border flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-amber-400 transition-colors"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  Ver historial de pagos
+                </Link>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* ── DESKTOP: Tabla ── */}
+        <div className="hidden md:block rounded-md border border-border overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow className="border-border bg-secondary/50 hover:bg-secondary/50">
                 <TableHead className="text-xs uppercase tracking-widest text-muted-foreground font-normal">Cliente</TableHead>
-                <TableHead className="text-xs uppercase tracking-widest text-muted-foreground font-normal">Monto mensual</TableHead>
-                <TableHead className="text-xs uppercase tracking-widest text-muted-foreground font-normal">Día de pago</TableHead>
+                <TableHead className="text-xs uppercase tracking-widest text-muted-foreground font-normal">Mensual</TableHead>
+                <TableHead className="text-xs uppercase tracking-widest text-muted-foreground font-normal">Día</TableHead>
                 <TableHead className="text-xs uppercase tracking-widest text-muted-foreground font-normal">Estado</TableHead>
-                <TableHead className="text-xs uppercase tracking-widest text-muted-foreground font-normal">Deuda total</TableHead>
+                <TableHead className="text-xs uppercase tracking-widest text-muted-foreground font-normal">Deuda</TableHead>
                 <TableHead className="text-xs uppercase tracking-widest text-muted-foreground font-normal">Prepagado</TableHead>
                 <TableHead className="w-10" />
               </TableRow>
@@ -113,94 +248,30 @@ export function ClientsTable({ clients, isAdmin }: ClientsTableProps) {
                           <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-[180px]">{client.notes}</p>
                         )}
                         {client.created_by_name && (
-                          <p className="text-[10px] text-muted-foreground/60 mt-0.5">
-                            Creado por {client.created_by_name}
-                          </p>
+                          <p className="text-[10px] text-muted-foreground/60 mt-0.5">Por {client.created_by_name}</p>
                         )}
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className="font-mono text-sm text-amber-400">
-                        {formatCurrency(client.monthly_amount)}
-                      </span>
+                      <span className="font-mono text-sm text-amber-400">{formatCurrency(client.monthly_amount)}</span>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <CalendarDays className="w-3.5 h-3.5" />
-                        Día {client.payment_day}
+                        <CalendarDays className="w-3.5 h-3.5" />Día {client.payment_day}
                       </div>
                     </TableCell>
+                    <TableCell><StatusBadge client={client} /></TableCell>
                     <TableCell>
-                      {client.overdue_payments > 0 ? (
-                        <Badge variant="outline" className="text-xs gap-1.5 border-red-500/30 text-red-400 bg-red-500/10">
-                          <AlertTriangle className="w-3 h-3" />
-                          {client.overdue_payments} en mora
-                        </Badge>
-                      ) : client.pending_payments > 0 ? (
-                        <Badge variant="outline" className="text-xs gap-1.5 border-amber-500/30 text-amber-400 bg-amber-500/10">
-                          {client.pending_payments} pendiente{client.pending_payments > 1 ? 's' : ''}
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-xs gap-1.5 border-emerald-500/30 text-emerald-400 bg-emerald-500/10">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Al día
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <span className={cn(
-                        'font-mono text-sm',
-                        client.total_debt > 0 ? 'text-red-400' : 'text-muted-foreground'
-                      )}>
+                      <span className={cn('font-mono text-sm', client.total_debt > 0 ? 'text-red-400' : 'text-muted-foreground')}>
                         {client.total_debt > 0 ? formatCurrency(client.total_debt) : '—'}
                       </span>
                     </TableCell>
                     <TableCell>
-                      {client.prepaid_months > 0 ? (
-                        <Badge variant="outline" className="text-xs border-emerald-500/30 text-emerald-400">
-                          +{client.prepaid_months} mes{client.prepaid_months > 1 ? 'es' : ''}
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
+                      {client.prepaid_months > 0
+                        ? <Badge variant="outline" className="text-xs border-emerald-500/30 text-emerald-400">+{client.prepaid_months}m</Badge>
+                        : <span className="text-xs text-muted-foreground">—</span>}
                     </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          disabled={isPending}
-                          className="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
-                        >
-                          <MoreHorizontal className="w-4 h-4" />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="bg-card border-border">
-                          <DropdownMenuItem>
-                            <Link href={`/dashboard/clientes/${client.id}`} className="text-sm gap-2 cursor-pointer flex items-center">
-                              <Eye className="w-3.5 h-3.5" />
-                              Ver pagos
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => setPrepaidClient(client)}
-                            className="text-sm gap-2 cursor-pointer text-emerald-400 focus:text-emerald-400 focus:bg-emerald-500/10"
-                          >
-                            <CalendarCheck className="w-3.5 h-3.5" />
-                            Registrar pago múltiple
-                          </DropdownMenuItem>
-                          {isAdmin && (
-                            <>
-                              <DropdownMenuSeparator className="bg-border" />
-                              <DropdownMenuItem
-                                onClick={() => handleDelete(client)}
-                                className="text-sm gap-2 text-destructive cursor-pointer focus:text-destructive focus:bg-destructive/10"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                                Eliminar cliente
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+                    <TableCell><ActionsMenu client={client} /></TableCell>
                   </TableRow>
                 ))
               )}
@@ -216,12 +287,19 @@ export function ClientsTable({ clients, isAdmin }: ClientsTableProps) {
         )}
       </div>
 
-      {/* Dialog de pago múltiple */}
+      {/* Dialogs */}
       {prepaidClient && (
         <PrepaidDialog
           client={prepaidClient}
           open={!!prepaidClient}
           onClose={() => setPrepaidClient(null)}
+        />
+      )}
+      {editClient && (
+        <EditClientDialog
+          client={editClient}
+          open={!!editClient}
+          onClose={() => setEditClient(null)}
         />
       )}
     </>
