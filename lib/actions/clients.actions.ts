@@ -17,21 +17,33 @@ import type {
 
 // ─── HELPERS ──────────────────────────────────────────────
 
+// Ajusta el día al último día válido del mes (ej: día 31 en febrero → 28/29)
+function clampToMonth(year: number, month: number, day: number): Date {
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  return new Date(year, month, Math.min(day, lastDay))
+}
+
 function getDueDatesUpToToday(client: Client): Date[] {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const dates: Date[] = []
   const start = new Date(client.start_date)
+  const day = client.payment_day
 
-  let current = new Date(start.getFullYear(), start.getMonth(), client.payment_day)
+  // Primera due_date en el mes de inicio
+  let current = clampToMonth(start.getFullYear(), start.getMonth(), day)
+
+  // Si ya pasó ese día, empezar el mes siguiente
   if (current < start) {
-    current = new Date(start.getFullYear(), start.getMonth() + 1, client.payment_day)
+    current = clampToMonth(start.getFullYear(), start.getMonth() + 1, day)
   }
 
   while (current <= today) {
     dates.push(new Date(current))
-    current = new Date(current.getFullYear(), current.getMonth() + 1, client.payment_day)
+    // Avanzar al mismo día del mes siguiente respetando meses cortos
+    current = clampToMonth(current.getFullYear(), current.getMonth() + 1, day)
   }
+
   return dates
 }
 

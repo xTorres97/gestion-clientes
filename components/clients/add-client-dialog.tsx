@@ -117,12 +117,12 @@ export function AddClientDialog() {
                 name="payment_day"
                 type="number"
                 min="1"
-                max="28"
+                max="31"
                 placeholder="15"
                 required
                 className="bg-secondary border-border focus:border-amber-500/50"
               />
-              <p className="text-[10px] text-muted-foreground">Día del mes (1–28)</p>
+              <p className="text-[10px] text-muted-foreground">Día del mes (1–31)</p>
             </div>
           </div>
 
