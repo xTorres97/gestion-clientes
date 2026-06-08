@@ -249,7 +249,6 @@ export async function createClient_(formData: ClientFormData): Promise<ActionRes
   revalidatePath('/dashboard/morosos')
   return { data: data as Client, error: null }
 }
-
 // ─── MARCAR PAGO COMO PAGADO ──────────────────────────────
 export async function markPaymentPaid(paymentId: string): Promise<ActionResult<Payment>> {
   const supabase = await createClient()
