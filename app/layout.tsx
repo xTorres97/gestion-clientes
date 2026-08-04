@@ -1,11 +1,11 @@
 // ============================================================
 // Archivo: src/app/layout.tsx (reemplaza el existente)
-// Agrega las meta tags necesarias para PWA
 // ============================================================
 
 import type { Metadata, Viewport } from 'next'
 import { DM_Serif_Display, DM_Mono } from 'next/font/google'
 import { Toaster } from '@/components/ui/sonner'
+import { SWRegister } from '@/components/sw-register'
 import './globals.css'
 
 const dmSerif = DM_Serif_Display({
@@ -51,17 +51,16 @@ export default function RootLayout({
   return (
     <html lang="es" className="dark">
       <head>
-        {/* iOS standalone mode */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
-        {/* Splash screens iOS (opcionales pero recomendados) */}
         <meta name="msapplication-TileColor" content="#f59e0b" />
         <meta name="msapplication-TileImage" content="/icons/icon-144x144.png" />
       </head>
       <body className={`${dmSerif.variable} ${dmMono.variable} font-mono antialiased`}>
         {children}
         <Toaster richColors position="top-right" />
+        <SWRegister />
       </body>
     </html>
   )
