@@ -1,22 +1,11 @@
 // ============================================================
 // Archivo: public/sw.js
-// Service Worker manual — compatible con cualquier versión de Next.js
 // ============================================================
 
 const CACHE_NAME = 'gestorcobros-v1'
 
-// Archivos a cachear para uso offline básico
-const STATIC_ASSETS = [
-  '/offline',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png',
-]
-
-// Instalación — precachear assets estáticos
+// Instalación — sin precachear nada para evitar errores
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
-  )
   self.skipWaiting()
 })
 
@@ -25,42 +14,39 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
-        keys
-          .filter((key) => key !== CACHE_NAME)
-          .map((key) => caches.delete(key))
+        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
       )
     )
   )
   self.clients.claim()
 })
 
-// Fetch — network first, fallback a offline page si falla
+// Fetch — network first, sin fallback problemático
 self.addEventListener('fetch', (event) => {
-  // Solo interceptar requests de navegación (páginas), no API calls
+  // Solo manejar requests del mismo origen
+  if (!event.request.url.startsWith(self.location.origin)) return
+
+  // Para navegación: network first, sin caer en cache offline por ahora
   if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request).catch(() =>
-        caches.match('/offline')
-      )
-    )
+    event.respondWith(fetch(event.request))
     return
   }
 
-  // Para assets estáticos: cache first
-  if (
-    event.request.destination === 'image' ||
-    event.request.destination === 'font' ||
-    event.request.destination === 'style'
-  ) {
+  // Para imágenes estáticas: cache first
+  if (event.request.destination === 'image') {
     event.respondWith(
       caches.match(event.request).then(
-        (cached) => cached || fetch(event.request)
+        (cached) => cached || fetch(event.request).then((response) => {
+          const clone = response.clone()
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))
+          return response
+        })
       )
     )
   }
 })
 
-// Notificaciones push (para alertas de morosos — futuro)
+// Push notifications
 self.addEventListener('push', (event) => {
   if (!event.data) return
   const data = event.data.json()
@@ -75,7 +61,6 @@ self.addEventListener('push', (event) => {
   )
 })
 
-// Clic en notificación — abrir la app
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   event.waitUntil(
