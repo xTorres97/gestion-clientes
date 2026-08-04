@@ -31,7 +31,6 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: 'GestorCobros',
   description: 'Sistema de gestión de clientes y deudas',
-  manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
@@ -51,12 +50,12 @@ export default function RootLayout({
   return (
     <html lang="es" className="dark">
       <head>
+        <link rel="manifest" href="/manifest.json" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
         <meta name="msapplication-TileColor" content="#f59e0b" />
         <meta name="msapplication-TileImage" content="/icons/icon-144x144.png" />
-        <link rel="manifest" href="/manifest.json" />
       </head>
       <body className={`${dmSerif.variable} ${dmMono.variable} font-mono antialiased`}>
         {children}
