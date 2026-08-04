@@ -56,6 +56,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
         <meta name="msapplication-TileColor" content="#f59e0b" />
         <meta name="msapplication-TileImage" content="/icons/icon-144x144.png" />
+        <link rel="manifest" href="/manifest.json" />
       </head>
       <body className={`${dmSerif.variable} ${dmMono.variable} font-mono antialiased`}>
         {children}
