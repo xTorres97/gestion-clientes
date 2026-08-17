@@ -192,8 +192,15 @@ export async function getClientPayments(clientId: string): Promise<ActionResult<
 export async function getDebtors(): Promise<ActionResult<PaymentWithStatus[]>> {
   const supabase = await createClient()
 
-  const { data: allClients } = await supabase.from('clients').select('id')
-  await Promise.all((allClients ?? []).map((c) => generatePendingPayments(c.id)))
+  // Optimización: solo regenerar pagos de clientes actualizados hace más de 23h
+  const { data: clientsNeedingUpdate } = await supabase
+    .from('clients')
+    .select('id')
+    .lte('updated_at', new Date(Date.now() - 23 * 60 * 60 * 1000).toISOString())
+
+  if (clientsNeedingUpdate && clientsNeedingUpdate.length > 0) {
+    await Promise.all(clientsNeedingUpdate.slice(0, 20).map((c) => generatePendingPayments(c.id)))
+  }
 
   const today = new Date()
   today.setHours(0, 0, 0, 0)
